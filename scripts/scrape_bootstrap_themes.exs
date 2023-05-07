@@ -6,7 +6,7 @@ defmodule ScrapeBootstrapThemes do
   @css_directory "scripts/cache/original_files"
 
   @darkness_factor 0.80
-  @modal_background_opacity 0.80
+  @modal_background_opacity 0.85
 
   defp to_int!(string) do
     {int, ""} = Integer.parse(string)

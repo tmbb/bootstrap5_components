@@ -200,16 +200,14 @@ defmodule Bootstrap5Components do
                 aria-modal="true"
                 tabindex="0"
             >
-              <div class="modal-content">
-                <div class="modal-header">
+              <div class="modal-content position-relative">
+                <div class="modal-body">
                   <button
                     phx-click={hide_modal(@on_cancel, @id)}
                     type="button"
-                    class="btn-close"
+                    class="btn-close position-absolute top-0 end-0 my-2 mx-2"
                     aria-label={gettext("close")}>
                   </button>
-                </div>
-                <div class="modal-body">
                   <%= render_slot(@inner_block) %>
                 </div>
                 <div :if={@cancel != []} class="modal-footer">
@@ -344,9 +342,9 @@ defmodule Bootstrap5Components do
           ~H"""
           <.form :let={f} for={@for} as={@as} {@rest}>
             <%= render_slot(@inner_block, f) %>
-            <div :for={action <- @actions} class="btn btn-primary">
+            <span :for={action <- @actions}>
               <%= render_slot(action, f) %>
-            </div>
+            </span>
           </.form>
           """
         end
