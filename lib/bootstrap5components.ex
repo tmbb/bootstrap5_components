@@ -112,7 +112,7 @@ defmodule Bootstrap5Components do
     css_assets_html =
       {:sigil_H, [delimiter: ~S(""")], [
         {:<<>>, [], [
-          ~s[<link phx-track-static href={"#{static_assets_path}/\#{@theme}.css"} rel="stylesheet" />\n]
+          ~s[<link phx-track-static href={"#{static_assets_path}/css/\#{@theme}.css"} rel="stylesheet" />\n]
         ]},
         []
       ]}
@@ -258,6 +258,7 @@ defmodule Bootstrap5Components do
               role="alert"
               class={[
                 "card",
+                "position-relative",
                 @kind == :info && "alert alert-success",
                 @kind == :error && "alert alert-danger"
               ]}
@@ -275,7 +276,7 @@ defmodule Bootstrap5Components do
               <button
                 :if={@close}
                 type="button"
-                class="btn-close position-fixed top-0 end-0"
+                class="btn-close position-absolute top-0 end-0 my-2 mx-2"
                 aria-label={gettext("close")}
               >
               </button>

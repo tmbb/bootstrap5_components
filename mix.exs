@@ -21,7 +21,8 @@ defmodule Bootstrap5components.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:phoenix_live_view, "~> 0.18"}
+      {:phoenix_live_view, "~> 0.18"},
+      {:code_gen, github: "tmbb/ex_code_gen"}
     ]
   end
 end

@@ -5,6 +5,14 @@ defmodule ScrapeBootstrapThemes do
   @bootswatch_html_path "scripts/cache/cdnjs_bootswatch.html"
   @css_directory "scripts/cache/original_files"
 
+  @darkness_factor 0.80
+  @modal_background_opacity 0.80
+
+  defp to_int!(string) do
+    {int, ""} = Integer.parse(string)
+    int
+  end
+
   def run(opts \\  []) do
     use_local_cached_files = Keyword.get(opts, :cached, @use_local_cached_files)
     # If we're building everything anew, download the necessary files
@@ -145,7 +153,7 @@ defmodule ScrapeBootstrapThemes do
           width: 100%;
           height: 100%;
           overflow: auto;
-          background-color: rgba(255,255,255,0.9);
+          background-color: rgba(255,255,255,0.1);
         }
 
         .live-modal .modal-title {
@@ -161,6 +169,8 @@ defmodule ScrapeBootstrapThemes do
   end
 
   def build_css_overrides(values) do
+    {bg_r, bg_g, bg_b} = darken_color(values.background_rgb)
+
     """
         .phx-no-feedback .form-control:focus.is-invalid, .phx-no-feedback .form-control:focus.is-valid {
           box-shadow:#{values.box_shadow};
@@ -179,6 +189,28 @@ defmodule ScrapeBootstrapThemes do
         .bi {
           display: inline-block
         }
+
+        .live-modal {
+          opacity: 1 !important;
+          position: fixed;
+          z-index: 1;
+          left: 0;
+          top: 0;
+          width: 100%;
+          height: 100%;
+          overflow: auto;
+          background-color: rgba(#{bg_r},#{bg_g},#{bg_b},#{@modal_background_opacity});
+        }
+
+        .live-modal .modal-title {
+          margin-top: 0;
+        }
+
+        .live-modal .close {
+          position: absolute;
+          right: 1rem;
+          top: 1rem;
+        }
     """
   end
 
@@ -186,7 +218,6 @@ defmodule ScrapeBootstrapThemes do
     """
         <style>
     #{build_css_overrides(values)}
-        <%= fixed_css_overrides() %>
         </style>\
     """
   end
@@ -228,10 +259,18 @@ defmodule ScrapeBootstrapThemes do
     [box_shadow] = Regex.run(~r/box-shadow:\s*([^;]*)\s*;?/, form_control_focus_css, capture: :all_but_first)
     [focus_border_color] = Regex.run(~r/border-color:\s*([^;]*)\s*;?/, form_control_focus_css, capture: :all_but_first)
 
+    [bg_r, bg_g, bg_b] = Regex.run(~r/--bs-body-bg-rgb:\s*(\d+),(\d+),(\d+)\s*;/, css_file, capture: :all_but_first)
+    background_rgb = {to_int!(bg_r), to_int!(bg_g), to_int!(bg_b)}
+
     [form_control_css] = Regex.run(~r/.form-control\s*{([^}]*)}/, css_file, capture: :all_but_first)
     [border] = Regex.run(~r/border:\s*([^;]*)\s*;?/, form_control_css, capture: :all_but_first)
 
-    %{border: border, box_shadow: box_shadow, focus_border_color: focus_border_color}
+    %{border: border, box_shadow: box_shadow, focus_border_color: focus_border_color, background_rgb: background_rgb}
+  end
+
+  def darken_color({r, g, b}) do
+    f = @darkness_factor
+    {round(f * r), round(f * g), round(f * b)}
   end
 
   def get_css_values(directory, urls) do
