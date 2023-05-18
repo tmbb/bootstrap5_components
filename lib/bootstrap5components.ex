@@ -102,7 +102,17 @@ defmodule Bootstrap5Components do
 
   defmacro __code_gen__(options) do
     gettext_module = Keyword.fetch!(options, :gettext_module)
+    user_supplied_icons_module = Keyword.fetch(options, :icons_module)
     static_assets_path = Keyword.get(options, :static_assets_path, "/_bs5components")
+
+    {_use_inline_icons?, icons_module} =
+      case user_supplied_icons_module do
+        {:ok, icons_module} ->
+          {false, icons_module}
+
+        :error ->
+          {false, quote(do: Bootstrap5Components.InlineIcons)}
+      end
 
     # =================================================================
     # WARNING
@@ -468,7 +478,7 @@ defmodule Bootstrap5Components do
         attr(:size, :any, default: "1em")
 
         def icon(%{} = assigns) do
-          Bootstrap5Components.Icons.icon(assigns)
+          unquote(icons_module).icon(assigns)
         end
       end
 
@@ -532,23 +542,28 @@ defmodule Bootstrap5Components do
         attr(:class, :string, default: nil)
 
         slot(:inner_block, required: true)
+        slot(:text)
         slot(:subtitle)
         slot(:actions)
 
         def header(assigns) do
           ~H"""
-          <header class={[@actions != [] && "flex items-center justify-between gap-6", @class]}>
-            <div>
-              <h1 class="text-lg font-semibold leading-8 text-zinc-800">
-                <%= render_slot(@inner_block) %>
-              </h1>
+          <header class={["mt-2", @actions != [] && "mb-3", @class]}>
+            <h1 class="">
+              <%= render_slot(@inner_block) %>
+            </h1>
 
-              <p :if={@subtitle != []} class="mt-2 text-sm leading-6 text-zinc-600">
-                <%= render_slot(@subtitle) %>
-              </p>
+            <h2 :if={@subtitle != []} class="mt-2">
+              <%= render_slot(@subtitle) %>
+            </h2>
+
+            <div :if={@text != []}>
+              <%= render_slot(@text) %>
             </div>
 
-            <div class="flex-none"><%= render_slot(@actions) %></div>
+            <div class="mb-3">
+              <%= render_slot(@actions) %>
+            </div>
           </header>
           """
         end
@@ -620,7 +635,7 @@ defmodule Bootstrap5Components do
                     </div>
                   </td>
 
-                  <td :if={@action != []} class="">
+                  <td :if={@action != []}>
                     <span :for={action <- @action} class="">
                       <%= render_slot(action, @row_item.(row)) %>
                     </span>
