@@ -22,7 +22,10 @@ defmodule Bootstrap5components.MixProject do
   defp deps do
     [
       {:phoenix_live_view, "~> 0.18"},
-      {:code_gen, github: "tmbb/ex_code_gen"}
+      {:gettext, "~> 0.18"},
+      {:code_gen, path: "../ex_code_gen"},
+      {:ex_doc, "~> 0.29", only: :dev},
+      {:makeup_eex, "~> 0.1.0"}
     ]
   end
 end
