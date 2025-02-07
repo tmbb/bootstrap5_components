@@ -25,7 +25,7 @@ defmodule Bootstrap5Components.MixProject do
     [
       # This option is only needed when you don't want to use the OTP application name
       name: "bootstrap5components",
-      description: "Phoenix components based on the Bootstrap5 CSS framework."
+      description: "Phoenix components based on the Bootstrap5 CSS framework.",
       # These are the default files included in the package
       files: ~w(lib priv .formatter.exs mix.exs
                 README* LICENSE* CHANGELOG*),
