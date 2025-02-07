@@ -25,9 +25,10 @@ defmodule Bootstrap5Components.MixProject do
     [
       # This option is only needed when you don't want to use the OTP application name
       name: "bootstrap5components",
+      description: "Phoenix components based on the Bootstrap5 CSS framework."
       # These are the default files included in the package
-      files: ~w(lib priv .formatter.exs mix.exs README* readme* LICENSE*
-                license* CHANGELOG* changelog* src),
+      files: ~w(lib priv .formatter.exs mix.exs
+                README* LICENSE* CHANGELOG*),
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => "https://github.com/tmbb/bootstrap5_components"}
     ]
