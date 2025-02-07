@@ -22,21 +22,34 @@ defmodule Bootstrap5Components.InlineIcons.Builder do
 
   defmacro build_function_clauses() do
     icon_directory = "priv/assets/icons/"
-    icon_filenames = File.ls!(icon_directory)
-    icon_paths = Enum.map(icon_filenames, fn basename -> Path.join(icon_directory, basename) end)
-    icon_names = Enum.map(icon_filenames, fn basename -> String.trim_trailing(basename, ".svg") end)
+    icon_filenames =
+      icon_directory
+      |> File.ls!()
+      |> Enum.filter(fn filename -> String.ends_with?(filename, ".svg") end)
+
+    icon_paths = Enum.map(icon_filenames, fn basename ->
+      Path.join(icon_directory, basename)
+    end)
+
+    icon_names = Enum.map(icon_filenames, fn basename ->
+      String.trim_trailing(basename, ".svg")
+    end)
 
     definitions =
       for {icon_name, icon_path} <- Enum.zip(icon_names, icon_paths) |> Enum.sort() do
         # Build the template from the original SVG file
         template = File.read!(icon_path)
         template = String.replace(template, ~S[width="16"], ~S[width={@size}])
-        template = String.replace(template, ~S[height="16"], ~S[height={@size} style="vertical-align: -0.125em;"])
+
+        template =
+          String.replace(
+            template,
+            ~S[height="16"],
+            ~S[title={@title} height={@size} style="vertical-align: -0.125em;"]
+          )
 
         # Build a sigil from the SVG contents
-        sigil =
-          {:sigil_H, [delimiter: "\"\"\"", line: 0],
-            [{:<<>>, [line: 1], [template]}, []]}
+        sigil = {:sigil_H, [delimiter: "\"\"\"", line: 0], [{:<<>>, [line: 1], [template]}, []]}
 
         quote do
           def icon(%{name: unquote(icon_name)} = unquote(Macro.var(:assigns, nil))) do
@@ -49,8 +62,9 @@ defmodule Bootstrap5Components.InlineIcons.Builder do
       quote do
         use Phoenix.Component
 
-        attr :name, :string, required: true
-        attr :size, :any, required: false, default: "1em"
+        attr(:name, :string, required: true)
+        attr(:title, :string, required: false, default: nil)
+        attr(:size, :any, required: false, default: "1em")
 
         unquote_splicing(definitions)
       end

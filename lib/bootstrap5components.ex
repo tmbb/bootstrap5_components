@@ -8,7 +8,7 @@ defmodule Bootstrap5Components do
         use CodeGen,
           module: Bootstrap5Components,
           options: [
-            # This options is required:
+            # This option is required:
             gettext_module: YourAppWeb.Gettext
           ]
       end
@@ -23,6 +23,54 @@ defmodule Bootstrap5Components do
   use Phoenix.Component
 
   require Bootstrap5Components.CodeGen
+  alias Bootstrap5Components.Resource
+
+  @doc """
+  Create a select option from a resoure that implements
+  the `Bootstrap5Components.Resource` protocol.
+  """
+  def as_select_option(resource) do
+    {Resource.as_text(resource), resource.id}
+  end
+
+  @doc """
+  Create list of select options from a list of resoures that´
+  implement the `Bootstrap5Components.Resource` protocol.
+  """
+  def as_select_options(resources) do
+    Enum.map(resources, &as_select_option/1)
+  end
+
+  @doc """
+  Render a resource as plain text.
+  """
+  def as_text(resource) do
+    Resource.as_text(resource)
+  end
+
+  @doc """
+  Render a resource as HTML.
+  """
+  def as_html(resource) do
+    Resource.as_html(resource)
+  end
+
+  @doc """
+  Get the url for a resource.
+  """
+  def path_for(resource) do
+    Resource.path_for(resource)
+  end
+
+  @doc """
+  Get the url for a resource.
+  """
+  def as_link(resource) do
+    assigns = %{resource: resource}
+    ~H"""
+    <a href={path_for(@resource)}>{as_html(@resource)}</a>x\
+    """
+  end
 
   @doc false
   defmacro __code_gen__(options) do
@@ -38,6 +86,7 @@ defmodule Bootstrap5Components do
     #
     # This macro will expand into another macro which will actually
     # generate the correct code.
+    #
     # Throughout this chain of macro expansions, the Elixir compiler
     # will be able to easily follow the dependencies of all modules,
     # so everything will run smoothly.

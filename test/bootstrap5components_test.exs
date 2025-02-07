@@ -5,7 +5,7 @@ defmodule Bootstrap5componentsTest do
   require Phoenix.LiveViewTest
   alias Phoenix.LiveView.JS
 
-  test "The functions in the Boostrap5Components module raise an error" do
+  test "The components in the Boostrap5Components module raise an error" do
     # Components without default arguments
 
     components_without_default_arguments = [
@@ -29,7 +29,6 @@ defmodule Bootstrap5componentsTest do
     end
 
     # JS functions (which take a %JS{} as an optional argument and a string)
-
 
     js_functions_1 = [
       &Bootstrap5Components.show/1,
@@ -62,21 +61,22 @@ defmodule Bootstrap5componentsTest do
     assert_raise DocumentationOnlyError, fn ->
       Phoenix.LiveViewTest.render_component(
         &Bootstrap5Components.css_assets/1,
-        [theme: "slate"]
+        theme: "slate"
       )
     end
 
     assert_raise DocumentationOnlyError, fn ->
       Phoenix.LiveViewTest.render_component(
         &Bootstrap5Components.icon/1,
-        [name: "upload"]
+        name: "upload"
       )
     end
 
     assert_raise DocumentationOnlyError, fn ->
       Phoenix.LiveViewTest.render_component(
         &Bootstrap5Components.input/1,
-        [type: "checkbox", value: true]
+        type: "checkbox",
+        value: true
       )
     end
   end

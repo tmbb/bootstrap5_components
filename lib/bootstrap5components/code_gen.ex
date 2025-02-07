@@ -1,13 +1,18 @@
 defmodule Bootstrap5Components.CodeGen do
   @moduledoc false
 
+  require Bootstrap5Components.Animations
+
   defmacro __code_gen__(options) do
     gettext_module = Keyword.fetch!(options, :gettext_module)
     user_supplied_icons_module = Keyword.fetch(options, :icons_module)
     static_assets_path = Keyword.get(options, :static_assets_path, "/_bs5components")
-    sidebar_class = Keyword.get(options, :sidebar_width, "col-sm-2")
-    main_content_class = Keyword.get(options, :main_content_width, "col-sm-10")
+    sidebar_class = Keyword.get(options, :sidebar_width, "col-sm-3")
+    main_content_class = Keyword.get(options, :main_content_width, "col-sm-9")
     documentation_only? = Keyword.get(options, :documentation_only?, false)
+    use_is_valid_class? = Keyword.get(options, :use_is_valid_class, false)
+
+    is_valid_class = if use_is_valid_class? do "is-valid" else "" end
 
     maybe_raise_not_implemented =
       if documentation_only? do
@@ -33,12 +38,29 @@ defmodule Bootstrap5Components.CodeGen do
     # We build a quoted expression manually to make sure everything
     # static is static and everything dynamic is dynamic
     css_assets_html =
-      {:sigil_H, [delimiter: ~S(""")], [
-        {:<<>>, [], [
-          ~s[<link phx-track-static href={"#{static_assets_path}/css/\#{@theme}.css"} rel="stylesheet" />\n]
-        ]},
-        []
-      ]}
+      {:sigil_H, [delimiter: ~S(""")],
+       [
+         {:<<>>, [],
+          [
+            """
+            <%= if @theme do %>
+              <link phx-track-static href={"#{static_assets_path}/css/\#{@theme}.css"} rel="stylesheet" />
+            <% end %>
+            <link phx-track-static href={"#{static_assets_path}/css/animate.css"} rel="stylesheet" />
+            <%= if @remote_select_widget do %>
+              <script src={"#{static_assets_path}/js/jquery.min.js"}></script>
+              <script src={"#{static_assets_path}/js/select2.min.js"}></script>
+              <link phx-track-static href={"#{static_assets_path}/css/select2.min.css"} rel="stylesheet" />
+              <%= if @remote_select_widget_right_to_left do %>
+                <link phx-track-static href={"#{static_assets_path}/css/select2-bootstrap-5-theme.rtl.min.css"} rel="stylesheet" />
+              <% else %>
+                <link phx-track-static href={"#{static_assets_path}/css/select2-bootstrap-5-theme.min.css"} rel="stylesheet" />
+              <% end %>
+            <% end %>
+            """
+          ]},
+         []
+       ]}
 
     # Now, we need to insert a literal inside a quote which will live inside a quote
     plug_ast =
@@ -51,18 +73,37 @@ defmodule Bootstrap5Components.CodeGen do
         )
       end
 
-    plug_return_ast =
-      {:quote, [context: __MODULE__], [[do: plug_ast]]}
+    plug_return_ast = {:quote, [context: __MODULE__], [[do: plug_ast]]}
 
     quote do
       alias Phoenix.LiveView.JS
       use Phoenix.Component
-      import unquote(gettext_module)
+      use Gettext, backend: unquote(gettext_module)
 
       CodeGen.block "bs5:assets" do
         defmacro __using__(:assets) do
           unquote(plug_return_ast)
         end
+
+        @doc """
+        A component containing the references to all CSS and JS used by these components.
+
+        [INSERT LVATTRDOCS]
+        """
+
+        attr(:theme, :string, default: nil,
+          doc: "the bootswatch theme to use; use `nil` if you want a custom theme."
+        )
+
+        attr(:remote_select_widget, :boolean,
+          default: true,
+          doc: "whether to download the JS and CSS for the remote select widget"
+        )
+
+        attr(:remote_select_widget_right_to_left, :boolean,
+          default: false,
+          doc: "whether to add support for right to left text in the select widget"
+        )
 
         def css_assets(%{theme: _theme} = assigns) do
           unquote_splicing(maybe_raise_not_implemented)
@@ -70,9 +111,47 @@ defmodule Bootstrap5Components.CodeGen do
         end
       end
 
+      CodeGen.block "bs5:flop" do
+        @doc """
+        Default options for Flop tables that play well with Bootstrap5.
+
+        Note: this is an argument one should pass to a Flop table component,
+        not a standalone component.
+        """
+        def flop_table_options() do
+          [
+            table_attrs: [class: "table"]
+          ]
+        end
+
+        @doc """
+        Default options for Flop pagination that play well with Bootstrap5.
+
+        Note: this is an argument one should pass to a Flop paginiation component,
+        not a standalone component.
+        """
+        def flop_pagination_options() do
+          [
+            previous_link_content: {:safe, dgettext("pagination", "« Previous")},
+            next_link_content: {:safe, dgettext("pagination", "Next »")},
+            wrapper_attrs: [class: "navigation", role: "navigation", aria: [label: "pagination"]],
+            previous_link_attrs: [class: "btn btn-primary", role: "button"],
+            next_link_attrs: [class: "btn btn-primary", role: "button"],
+            ellipsis_attrs: [class: "page-link disabled", "aria-disabled": true],
+            pagination_list_attrs: [class: "pagination mt-2"],
+            pagination_list_item_attrs: [class: "page-item"],
+            pagination_link_attrs: [class: "page-link"],
+            current_link_attrs: [class: "page-link active"],
+            page_links: {:ellipsis, 5}
+          ]
+        end
+      end
+
       CodeGen.block "bs5:modal" do
         @doc """
         Renders a modal.
+
+        [INSERT LVATTRDOCS]
 
         ## Examples
 
@@ -101,6 +180,7 @@ defmodule Bootstrap5Components.CodeGen do
         attr(:on_cancel, JS, default: %JS{})
         attr(:on_confirm, JS, default: %JS{})
         attr(:on_click_away, JS, default: %JS{})
+        attr(:close_button, :boolean, default: true)
 
         slot(:inner_block, required: true)
         slot(:title)
@@ -110,49 +190,78 @@ defmodule Bootstrap5Components.CodeGen do
 
         def modal(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
-          <div
-            id={@id}
-            phx-mounted={@show && show_modal(@id)}
-            phx-remove={hide_modal(@id)}
-            class="live-modal modal"
-          >
-            <.focus_wrap
-                id={"#{@id}-container"}
-                phx-mounted={@show && show_modal(@id)}
-                phx-click-away={@on_click_away}
-                phx-window-keydown={hide_modal(@on_cancel, @id)}
-                phx-key="escape"
-                class="modal-dialog modal-xl"
-                aria-labelledby={"#{@id}-title"}
-                aria-describedby={"#{@id}-description"}
-                role="dialog"
-                aria-modal="true"
-                tabindex="0"
-            >
-              <div class="modal-content position-relative">
-                <div class="modal-body">
-                  <button
-                    phx-click={hide_modal(@on_cancel, @id)}
-                    type="button"
-                    class="btn-close position-absolute top-0 end-0 my-2 mx-2"
-                    aria-label={gettext("close")}>
+          <div id={@id}
+               class="modal live-modal-background"
+               phx-mounted={@show && show_modal(@id)}
+               phx-remove={hide_modal(@id)}
+               tabindex="-1">
+            <div class="modal-dialog">
+              <%# The next line is equivalent to `<div class="modal-content"/>...</div>` %>
+              <.focus_wrap id={"#{@id}-container"}
+                           class="modal-content focus-ring"
+                           phx-mounted={@show && show_modal(@id)}
+                           phx-click-away={@on_click_away}
+                           phx-window-keydown={hide_modal(@on_cancel, @id)}
+                           aria-labelledby={"#{@id}-title"}
+                           aria-describedby={"#{@id}-description"}
+                           role="dialog"
+                           aria-modal="true"
+                           tabindex="0">
+                <div class="modal-header">
+                  <h5 class="modal-title">
+                    <span :for={title <- @title}><%= render_slot(title) %></span>
+                  </h5>
+                  <button :if={@close_button}
+                          phx-click={hide_modal(@on_cancel, @id)}
+                          type="button"
+                          class="btn-close"
+                          aria-label="Close">
                   </button>
+                </div>
+                <div class="modal-body">
                   <%= render_slot(@inner_block) %>
                 </div>
-                <div :if={@cancel != []} class="modal-footer">
-                  <.link
-                      :for={cancel <- @cancel}
-                      phx-click={hide_modal(@on_cancel, @id)}
-                      class=""
-                      >
-                    <%= render_slot(cancel) %>
-                  </.link>
+                <div :if={@cancel != [] or @confirm != []} class="modal-footer">
+                  <button :for={confirm <- @confirm}
+                          phx-click={hide_modal(@on_confirm, @id)}
+                          type="button"
+                          class="btn btn-secondary">
+                    <%= render_slot(confirm) %>
+                  </button>
+                  <button :for={confirm <- @cancel}
+                          phx-click={hide_modal(@on_cancel, @id)}
+                          type="button"
+                          class="btn btn-primary">
+                    <%= render_slot(confirm) %>
+                  </button>
                 </div>
-              </div>
-            </.focus_wrap>
+              </.focus_wrap>
+            </div>
           </div>
           """
+        end
+
+        def show_modal(js \\ %JS{}, id) when is_binary(id) do
+          unquote_splicing(maybe_raise_not_implemented)
+
+          js
+          |> JS.show(to: "##{id}")
+          |> show("##{id}-container")
+          |> JS.add_class("overflow-hidden", to: "body")
+          |> JS.focus_first(to: "##{id}-content")
+        end
+
+        def hide_modal(js \\ %JS{}, id) do
+          unquote_splicing(maybe_raise_not_implemented)
+
+          js
+          |> JS.hide(to: "##{id}-bg")
+          |> hide("##{id}-container")
+          |> JS.hide(to: "##{id}")
+          |> JS.remove_class("overflow-hidden", to: "body")
+          |> JS.pop_focus()
         end
       end
 
@@ -163,17 +272,20 @@ defmodule Bootstrap5Components.CodeGen do
         """
 
         slot(:sidebar, required: false)
+
         slot(:content, required: true)
 
+        attr(:hide_sidebar, :boolean, default: false)
         attr(:sidebar_class, :string, default: unquote(sidebar_class))
         attr(:sidebar_body_class, :string, default: "")
         attr(:content_class, :string, default: unquote(main_content_class))
 
         def main(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
           <main>
-            <div class="container-fluid row">
+            <div :if={!@hide_sidebar} class="container-fluid row">
               <div class={@sidebar_class}>
                 <div class="card mt-3">
                   <div class={["card-body", @sidebar_body_class]}>
@@ -185,41 +297,14 @@ defmodule Bootstrap5Components.CodeGen do
                 <%= render_slot(@content) %>
               </div>
             </div>
+            <div :if={@hide_sidebar} class="container-fluid row">
+              <div>
+                <%= render_slot(@content) %>
+              </div>
+            </div>
           </main>
           """
         end
-
-        # @doc """
-        # Area for the content below the sidebar
-        # """
-
-        # attr(:width, :integer, default: unquote(main_content_width))
-        # slot(:inner_block, required: false)
-
-        # def main_content(assigns) do
-        #   unquote_splicing(maybe_raise_not_implemented)
-        #   ~H"""
-        #   <div class={"col-md-#{@width}"}>
-        #     <%= render_slot(@inner_block) %>
-        #   </div>
-        #   """
-        # end
-
-        # attr(:width, :integer, default: unquote(sidebar_width))
-        # slot(:inner_block, required: false)
-
-        # def sidebar(assigns) do
-        #   unquote_splicing(maybe_raise_not_implemented)
-        #   ~H"""
-        #   <div class={"col-md-#{@width}"}>
-        #     <div class="card mt-3">
-        #       <div class="card-body">
-        #         <%= render_slot(@inner_block) %>
-        #       </div>
-        #     </div>
-        #   </div>
-        #   """
-        # end
 
         @doc """
         A group of links in your sidebar, which will be rendered as a block
@@ -229,6 +314,7 @@ defmodule Bootstrap5Components.CodeGen do
 
         def sidebar_link_group(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
           <div class="btn-group-vertical w-100 ">
             <%= render_slot(@inner_block) %>
@@ -245,8 +331,9 @@ defmodule Bootstrap5Components.CodeGen do
 
         def sidebar_link(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
-          <a class="btn btn-primary w-100 text-start" href={@to}>
+          <a class="btn btn-primary text-start w-100" href={@to} >
             <%= render_slot(@inner_block) %>
           </a>
           """
@@ -258,17 +345,30 @@ defmodule Bootstrap5Components.CodeGen do
         Navbar component.
         """
 
-        slot(:brand, required: false, doc: "Branding element (e.g. the application name or a logo) for your navbar")
-        slot(:start_group, required: false, doc: "content at the start (i.e. left for LTR writing systems) of the navbar")
-        slot(:center_group, required: false, doc: "content at the center of the navbar")
-        slot(:end_group, required: false, doc: "content at the end (i.e. right for LTR writing systems) of the navbar")
-
         attr(:class, :string, default: "navbar-dark bg-primary")
+
+        slot(:brand,
+          required: false,
+          doc: "Branding element (e.g. the application name or a logo) for your navbar"
+        )
+
+        slot(:start_group,
+          required: false,
+          doc: "content at the start (i.e. left for LTR writing systems) of the navbar"
+        )
+
+        slot(:center_group, required: false, doc: "content at the center of the navbar")
+
+        slot(:end_group,
+          required: false,
+          doc: "content at the end (i.e. right for LTR writing systems) of the navbar"
+        )
 
         def navbar(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
-          <header class={["navbar navbar-expand-lg", @class]}>
+          <header class={["navbar navbar-expand-lg", @class]} >
             <div class="container-fluid">
               <%= if @brand != [] do %>
                 <span class="navbar-brand">
@@ -315,15 +415,87 @@ defmodule Bootstrap5Components.CodeGen do
 
         def navbar_link(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
           <.link class={[
                 "nav-link",
                 if @active do "active" else "" end,
                 if @disabled do "disabled" else "" end,
                 @class
-              ]} href={@to} method={@method}>
+              ]}
+              href={@to}
+              method={@method}
+              >
             <%= render_slot(@inner_block) %>
           </.link>
+          """
+        end
+      end
+
+      CodeGen.block "bs5:bulk_action" do
+        @doc """
+        A component for bulk actions that can take the ids of multiple targets.
+        """
+
+        attr :id, :string, required: true
+        attr :active, :boolean, required: true
+        attr :on_submit, :string, default: "bulk_action"
+        attr :on_change, :string, default: "selected_for_bulk_action"
+        attr :rest, :global
+
+        slot :action do
+          attr :navigate, :string, required: false
+          attr :name, :string, required: false
+          attr :class, :string, required: false
+          attr :confirmation_dialog, :string, required: false
+        end
+
+        def bulk_action(assigns) do
+          ~H"""
+          <.form :let={f} for={%{}} phx-submit={@on_submit} phx-change={@on_change} {@rest}>
+            <span :for={action <- @action}>
+              <.link
+                  :if={Map.get(action, :navigate)}
+                  navigate={Map.get(action, :navigate)}
+                  class={Map.get(action, :class, "btn btn-primary")}>
+                <%= render_slot(action, f) %>
+              </.link>
+              <.button
+                  :if={Map.get(action, :name)}
+                  phx-click={
+                    Map.get(action, :confirmation_dialog) &&
+                    show_modal(Map.get(action, :confirmation_dialog))
+                  }
+                  type="submit"
+                  name="action"
+                  value={Map.get(action, :name)}
+                  class={Map.get(action, :class, "btn btn-primary")}
+                  aria-disabled={to_string(not @active)}
+                  disabled={not @active}>
+                <%= render_slot(action, f) %>
+              </.button>
+            </span>
+
+            <%= render_slot(@inner_block, f) %>
+          </.form>
+          """
+        end
+
+        attr :target, :any, required: true
+        attr :aria_label, :string, default: "..."
+
+        @doc """
+        A checkbox to select an id for a bulk action.
+        """
+
+        def bulk_action_select(assigns) do
+          ~H"""
+          <input type="checkbox"
+                class="form-check-input"
+                aria-label={@aria_label}
+                id={"selected_#{@target}"}
+                name={"selected[]"}
+                value={@target}/>
           """
         end
       end
@@ -351,16 +523,16 @@ defmodule Bootstrap5Components.CodeGen do
 
         def flash(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
           <div
             :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
             id={@id}
-            phx-mounted={@autoshow && show("##{@id}")}
+            phx-mounted={@autoshow && auto_hide_flash(kind: @kind)}
             phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
             role="alert"
             class={[
-              "card",
-              "position-relative",
+              "card position-relative px-2 py-2",
               @kind == :info && "alert alert-success",
               @kind == :error && "alert alert-danger"
             ]}
@@ -381,10 +553,22 @@ defmodule Bootstrap5Components.CodeGen do
               type="button"
               class="btn-close position-absolute top-0 end-0 my-2 mx-2"
               aria-label={gettext("close")}
+              phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
             >
             </button>
           </div>
           """
+        end
+
+        def auto_hide_flash(js \\ %JS{}, opts) do
+          time = Keyword.get(opts, :time, 3000)
+          kind = Keyword.fetch!(opts, :kind)
+          transition = Keyword.get(opts, :transition, animate_fade_in())
+
+          js
+          |> JS.show()
+          |> JS.transition(transition, time: time)
+          |> JS.push("lv:clear-flash", value: %{key: kind})
         end
       end
 
@@ -402,8 +586,9 @@ defmodule Bootstrap5Components.CodeGen do
 
         def flash_group(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
-          <div class="position-absolute top-0 end-0 mt-4 ml-4">
+          <div class="position-absolute top-0 end-0 mt-4 me-4" >
             <.flash kind={:info} title="Success!" flash={@flash} />
             <.flash kind={:error} title="Error!" flash={@flash} />
             <.flash
@@ -448,10 +633,12 @@ defmodule Bootstrap5Components.CodeGen do
         )
 
         slot(:inner_block, required: true)
+
         slot(:actions, doc: "the slot for form actions, such as a submit button")
 
         def simple_form(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
           <.form :let={f} for={@for} as={@as} {@rest}>
             <%= render_slot(@inner_block, f) %>
@@ -501,6 +688,8 @@ defmodule Bootstrap5Components.CodeGen do
 
         attr(:multiple, :boolean, default: false, doc: "the multiple flag for select inputs")
 
+        attr(:tight_spacing, :boolean, default: false, doc: "remove the extra top margin")
+
         attr(:rest, :global,
           include: ~w(autocomplete cols disabled form max maxlength min minlength
                                         pattern placeholder readonly required rows size step)
@@ -508,7 +697,7 @@ defmodule Bootstrap5Components.CodeGen do
 
         slot(:inner_block)
 
-        unquote(vertical_input(maybe_raise_not_implemented))
+        unquote(vertical_input(maybe_raise_not_implemented, is_valid_class))
       end
 
       CodeGen.block "bs5:button" do
@@ -530,6 +719,7 @@ defmodule Bootstrap5Components.CodeGen do
 
         def button(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
           <button
             type={@type}
@@ -537,6 +727,7 @@ defmodule Bootstrap5Components.CodeGen do
               "btn",
               (if @class == nil do "btn-primary" else @class end)
             ]}
+
             {@rest}
           >
             <%= render_slot(@inner_block) %>
@@ -564,12 +755,13 @@ defmodule Bootstrap5Components.CodeGen do
 
         def list(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
-          <div class="">
-            <dl class="">
-              <div :for={item <- @item} class="">
-                <dt class=""><%= item.title %></dt>
-                <dd class=""><%= render_slot(item) %></dd>
+          <div >
+            <dl>
+              <div :for={item <- @item}>
+                <dt><%= item.title %></dt>
+                <dd><%= render_slot(item) %></dd>
               </div>
             </dl>
           </div>
@@ -586,6 +778,7 @@ defmodule Bootstrap5Components.CodeGen do
             TODO
         """
         attr(:name, :string, required: true)
+        attr(:title, :string, required: false, default: nil)
         attr(:size, :any, default: "1em")
 
         def icon(%{} = assigns) do
@@ -603,8 +796,9 @@ defmodule Bootstrap5Components.CodeGen do
 
         def label(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
-          <label for={@for} class="form-label">
+          <label for={@for} class="form-label" >
             <%= render_slot(@inner_block) %>
           </label>
           """
@@ -626,8 +820,9 @@ defmodule Bootstrap5Components.CodeGen do
 
         def back(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
-          <div class="mt-16">
+          <div class="mt-16" >
             <.link navigate={@navigate}>
               <.icon name="arrow-left"/> <%= render_slot(@inner_block) %>
             </.link>
@@ -644,8 +839,9 @@ defmodule Bootstrap5Components.CodeGen do
 
         def error(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
-          <p class="invalid-feedback mt-3">
+          <p class="invalid-feedback mt-3" >
             <.icon name="exclamation-circle"/> <%= render_slot(@inner_block) %>
           </p>
           """
@@ -659,15 +855,19 @@ defmodule Bootstrap5Components.CodeGen do
         attr(:class, :string, default: nil)
 
         slot(:inner_block, required: true)
+
         slot(:text)
+
         slot(:subtitle)
+
         slot(:actions)
 
         def header(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           ~H"""
-          <header class={["mt-2", @actions != [] && "mb-3", @class]}>
-            <h1 class="">
+          <header class={["mt-2", @actions != [] && "mb-3", @class]} >
+            <h1>
               <%= render_slot(@inner_block) %>
             </h1>
 
@@ -704,6 +904,11 @@ defmodule Bootstrap5Components.CodeGen do
         attr(:rows, :list, required: true)
         attr(:row_id, :any, default: nil, doc: "the function for generating the row id")
 
+        attr(:class, :string,
+          default: "table",
+          doc: "class(es) for your table; by default the `table` class is used"
+        )
+
         attr(:row_click, :any,
           default: nil,
           doc: "the function for handling phx-click on each row"
@@ -714,6 +919,21 @@ defmodule Bootstrap5Components.CodeGen do
           doc: "the function for mapping each row before calling the `:col` and `:action` slots"
         )
 
+        attr(:reorderable, :boolean,
+          default: false,
+          doc: "wether the table rows can be reordered by the user"
+        )
+
+        attr(:reorderable_event_name, :string,
+          default: "reordered",
+          doc: "name of the event sent to the LiveView when the items are reordered"
+        )
+
+        attr(:reorderable_animation_duration, :integer,
+          default: 150,
+          doc: "animation duration"
+        )
+
         slot :col, required: true do
           attr(:label, :string)
         end
@@ -722,49 +942,47 @@ defmodule Bootstrap5Components.CodeGen do
 
         def table(assigns) do
           unquote_splicing(maybe_raise_not_implemented)
+
           assigns =
             with %{rows: %Phoenix.LiveView.LiveStream{}} <- assigns do
               assign(assigns, row_id: assigns.row_id || fn {id, _item} -> id end)
             end
 
           ~H"""
-          <div class="">
-            <table class="table">
-              <thead class="">
-                <tr>
-                  <th :for={col <- @col} class=""><%= col[:label] %></th>
-                  <th class=""><span class="sr-only"><%= gettext("Actions") %></span></th>
-                </tr>
-              </thead>
+          <table class={@class} >
+            <thead>
+              <tr>
+                <th :for={col <- @col} class=""><%= col[:label] %></th>
+                <th><%= gettext("Actions") %></th>
+              </tr>
+            </thead>
 
-              <tbody
-                id={@id}
-                phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
-                class=""
-              >
-                <tr :for={row <- @rows} id={@row_id && @row_id.(row)} class="">
-                  <td
-                    :for={{col, i} <- Enum.with_index(@col)}
-                    phx-click={@row_click && @row_click.(row)}
-                    class={[""]}
-                  >
-                    <div class="">
-                      <span class="" />
-                      <span class={["relative", i == 0 && ""]}>
-                        <%= render_slot(col, @row_item.(row)) %>
-                      </span>
-                    </div>
-                  </td>
+            <tbody
+              id={@id}
+              phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
+            >
+              <tr :for={row <- @rows} id={@row_id && @row_id.(row)}
+                  data-list_id={@row_id && @row_id.(row)}>
+                <td
+                  :for={{col, i} <- Enum.with_index(@col)}
+                  phx-click={@row_click && @row_click.(row)}
+                  class={[""]}
 
-                  <td :if={@action != []}>
-                    <span :for={action <- @action} class="">
-                      <%= render_slot(action, @row_item.(row)) %>
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                >
+                  <span class="" />
+                  <span class={["relative", i == 0 && ""]}>
+                    <%= render_slot(col, @row_item.(row)) %>
+                  </span>
+                </td>
+
+                <td :if={@action != []}>
+                  <span :for={action <- @action}>
+                    <%= render_slot(action, @row_item.(row)) %>
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
           """
         end
       end
@@ -779,26 +997,6 @@ defmodule Bootstrap5Components.CodeGen do
           unquote_splicing(maybe_raise_not_implemented)
           JS.hide(js, to: selector, time: 200)
         end
-
-        def show_modal(js \\ %JS{}, id) when is_binary(id) do
-          unquote_splicing(maybe_raise_not_implemented)
-          js
-          |> JS.show(to: "##{id}")
-          |> JS.show(to: "##{id}-bg")
-          |> show("##{id}-container")
-          |> JS.add_class("overflow-hidden", to: "body")
-          |> JS.focus_first(to: "##{id}-content")
-        end
-
-        def hide_modal(js \\ %JS{}, id) do
-          unquote_splicing(maybe_raise_not_implemented)
-          js
-          |> JS.hide(to: "##{id}-bg")
-          |> hide("##{id}-container")
-          |> JS.hide(to: "##{id}")
-          |> JS.remove_class("overflow-hidden", to: "body")
-          |> JS.pop_focus()
-        end
       end
 
       CodeGen.block "bs5:translate" do
@@ -807,6 +1005,7 @@ defmodule Bootstrap5Components.CodeGen do
         """
         def translate_error({msg, opts}) do
           unquote_splicing(maybe_raise_not_implemented)
+
           @comment__ """
           When using gettext, we typically pass the strings we want
           to translate as a static argument:
@@ -843,39 +1042,437 @@ defmodule Bootstrap5Components.CodeGen do
         end
       end
 
+      CodeGen.block "bs5:animations" do
+        unquote(
+          Bootstrap5Components.Animations.insert_animations_ast(
+            maybe_raise_not_implemented
+          )
+        )
+      end
+
+
+      CodeGen.block "bs5:nested_inputs" do
+        attr :field, Phoenix.HTML.FormField, required: true
+
+        attr :sort_param, Phoenix.HTML.FormField,
+          required: true,
+          doc: "the parameter used by Ecto to sort your inputs"
+
+        attr :drop_param, Phoenix.HTML.FormField,
+          required: false,
+          default: nil,
+          doc: """
+            this attribute is optional if you don't want to support input deletion,
+            but it is required if you want to use the `<delete_input input={}/>` component.
+            """
+
+        attr :moved_animation, :any, default: "animate__animated animate__pulse animate__faster"
+
+        def non_movable_inputs_for(assigns) do
+          unquote_splicing(maybe_raise_not_implemented)
+
+          field = assigns.field
+
+          special_options = [
+            inner_inputs__sort_param: minimal_form_field(assigns.sort_param),
+            inner_inputs__drop_param: minimal_form_field(assigns.drop_param),
+            inner_inputs__nr_of_inputs: field.value |> Enum.into([]) |> length()
+          ]
+
+          assigns = assign(assigns, input_form_options: special_options)
+
+          ~H"""
+          <.inputs_for
+              :let={inner_form}
+              field={@field}
+              skip_hidden={true}
+              options={@input_form_options}>
+              <%# We set the id to a different value when
+                we have just moved that item, so that transitions work properly %>
+              <div
+                id={inner_form.id}
+                data-movable-item={inner_form.id}>
+
+              <%# I don't really understand the purpose of this attribute,
+                  but it's better to keep it for now %>
+              <input
+                  type="hidden"
+                  name={inner_form[:_persistent_id].name}
+                  value={inner_form[:_persistent_id].value} />
+
+              <%# Add the id for the input here, so that the user
+                  doesn't have to add it later.
+                  Maybe make this configurable in the future? %>
+              <input
+                  type="hidden"
+                  name={inner_form[:id].name}
+                  value={inner_form[:id].value} />
+
+              <%# The sorting values, which will be kept in order.
+                  The only way to change the order of the items is
+                  by using the "move-up" and "move-down" buttons.
+                  However, keeping these sort indices will let us
+                  reuse the already existing Ecto functionality,
+                  which is very complete. %>
+              <input
+                  type="hidden"
+                  id={"#{@sort_param.id}_#{inner_form.index}"}
+                  name={@sort_param.name <> "[]"}
+                  value={inner_form.index} />
+
+              <%= render_slot(@inner_block, inner_form) %>
+            </div>
+          </.inputs_for>
+          """
+        end
+
+        attr :field, Phoenix.HTML.FormField, required: true
+
+        attr :sort_param, Phoenix.HTML.FormField,
+          required: true,
+          doc: "the parameter used by Ecto to sort your inputs"
+
+        attr :move_param, Phoenix.HTML.FormField,
+          required: true,
+          doc: "the parameter that represents the item to be moved"
+
+        attr :moved_param, Phoenix.HTML.FormField,
+          required: true,
+          doc: "the parameter that represents the item that has been moved"
+
+        attr :drop_param, Phoenix.HTML.FormField,
+          required: false,
+          default: nil,
+          doc: """
+            this attribute is optional if you don't want to support input deletion,
+            but it is required if you want to use the `<delete_input input={}/>` component.
+            """
+
+        attr :moved_animation, :any, default: "animate__animated animate__pulse animate__faster"
+
+        def movable_inputs_for(assigns) do
+          unquote_splicing(maybe_raise_not_implemented)
+
+          field = assigns.field
+
+          special_options = [
+            inner_inputs__sort_param: minimal_form_field(assigns.sort_param),
+            inner_inputs__move_param: minimal_form_field(assigns.move_param),
+            inner_inputs__moved_param: minimal_form_field(assigns.moved_param),
+            inner_inputs__drop_param: minimal_form_field(assigns.drop_param),
+            inner_inputs__nr_of_inputs: field.value |> Enum.into([]) |> length()
+          ]
+
+          assigns = assign(assigns, input_form_options: special_options)
+
+          ~H"""
+          <.inputs_for
+              :let={movable_form}
+              field={@field}
+              skip_hidden={true}
+              options={@input_form_options}>
+              <%# We set the id to a different value when
+                we have just moved that item, so that transitions work properly %>
+              <div
+                id={movable_form.id}
+                data-movable-item={movable_form.id}
+                class={[
+                  if @moved_param.value == movable_form.index do
+                    @moved_animation
+                  else
+                    ""
+                  end
+                ]}>
+
+              <%# I don't really understand the purpose of this attribute,
+                  but it's better to keep it for now %>
+              <input
+                  type="hidden"
+                  name={movable_form[:_persistent_id].name}
+                  value={movable_form[:_persistent_id].value} />
+
+              <%# Add the id for the input here, so that the user
+                  doesn't have to add it later.
+                  Maybe make this configurable in the future? %>
+              <input
+                  type="hidden"
+                  name={movable_form[:id].name}
+                  value={movable_form[:id].value} />
+
+              <%# The sorting values, which will be kept in order.
+                  The only way to change the order of the items is
+                  by using the "move-up" and "move-down" buttons.
+                  However, keeping these sort indices will let us
+                  reuse the already existing Ecto functionality,
+                  which is very complete. %>
+              <input
+                  type="hidden"
+                  id={"#{@sort_param.id}_#{movable_form.index}"}
+                  name={@sort_param.name <> "[]"}
+                  value={movable_form.index} />
+
+              <%= render_slot(@inner_block, movable_form) %>
+            </div>
+          </.inputs_for>
+          """
+        end
+
+        # Remove unused data from a field to save on memory.
+        # This will be useful when we only need the field names
+        # and field ID for the HTML elements.
+
+        defp minimal_form_field(nil), do: nil
+
+        defp minimal_form_field(%Phoenix.HTML.FormField{} = form_field) do
+          %Phoenix.HTML.FormField{
+            id: form_field.id,
+            name: form_field.name,
+            errors: [],
+            field: nil,
+            form: nil,
+            value: form_field.value || ""
+          }
+        end
+
+        @doc """
+        A component to move an element up in an association.
+        To move up an element in an association is the same as movinbg it
+        towards the beginning of the list.
+
+        [INSERT LVATTRDOCS]
+        """
+
+        attr :input, Phoenix.HTML.FormField, doc: "the input to be moved"
+
+        attr :animation, :string, default: "animate__animated animate__fadeOut animate__faster"
+
+        attr :tooltip, :string, default: nil,
+          doc: "tooltip for the action"
+
+        attr :group_class, :string,
+          default: "btn btn-group",
+          doc: "CSS class for the outer element (a <div/> element)"
+
+        attr :move_up_class, :string,
+          default: "btn btn-sm btn-outline-dark",
+          doc: "CSS class for the move-up element (a <label/> element)"
+
+        attr :move_down_class, :string,
+          default: "btn btn-sm btn-outline-dark",
+          doc: "CSS class for the move-down element (a <label/> element)"
+
+        attr :cursor, :string,
+          default: "pointer",
+          doc: "CSS cursor style while hovering the button"
+
+
+        attr :cursor_when_disabled, :string,
+          default: "default",
+          doc: "CSS cursor style while hovering the disabled button"
+
+        slot :move_up, required: false, do: "contents for the move-up widget"
+
+        slot :move_down, required: false, do: "contents for the move-down widget"
+
+        def move_input(assigns) do
+          unquote_splicing(maybe_raise_not_implemented)
+
+          input = Map.get(assigns, :input)
+          move_param = Keyword.fetch!(input.options, :inner_inputs__move_param)
+          moved_param = Keyword.fetch!(input.options, :inner_inputs__moved_param)
+          nr_of_items = Keyword.fetch!(input.options, :inner_inputs__nr_of_inputs)
+
+          first? = input.index == 0
+          last? = input.index == nr_of_items - 1
+
+          assigns = assign(assigns,
+            move_param: move_param,
+            moved_param: moved_param,
+            nr_of_items: nr_of_items,
+            first?: first?,
+            last?: last?
+          )
+
+          ~H"""
+          <div class={@group_class} style="cursor:default">
+            <label
+                id={"#{@move_param.name}__up_#{@input.index}"}
+                style={if @first? do "cursor:#{@cursor_when_disabled}" else "cursor:#{@cursor}" end}
+                class={[@move_up_class, if @first? do "disabled" end]}
+                disabled={@first?}>
+
+              <% move_up_contents = render_slot(@move_up) %>
+              <%= if move_up_contents do %>
+                <%= move_up_contents %>
+              <% else %>
+                <.icon name="chevron-up" /> <%= dgettext("movable_inputs", "Move up") %>
+              <% end %>
+
+              <input
+                  type="checkbox"
+                  name={"#{@move_param.name}[up]"}
+                  value={@input.index}
+                  hidden/>
+            </label>
+
+            <label
+                id={"#{@move_param.name}__down_#{@input.index}"}
+                style={if @last? do "cursor:#{@cursor_when_disabled}" else "cursor:#{@cursor}" end}
+                class={[@move_down_class, if @last? do "disabled" end]}>
+
+              <% move_down_contents = render_slot(@move_up) %>
+              <%= if move_down_contents do %>
+                <%= move_down_contents %>
+              <% else %>
+                <.icon name="chevron-down" /> <%= dgettext("movable_inputs", "Move down") %>
+              <% end %>
+
+              <input
+                  type="checkbox"
+                  name={"#{@move_param.name}[down]"}
+                  value={@input.index}
+                  hidden/>
+            </label>
+          </div>
+          """
+        end
+
+        attr :sort_param, Phoenix.HTML.FormField, doc: "sort field for the association"
+
+        attr :cursor, :string,
+          default: "pointer",
+          doc: "CSS cursor style while hovering the button"
+
+        attr :tooltip, :string, default: nil,
+          doc: "tooltip for the action"
+
+        attr :class, :string,
+          default: "btn btn-primary mt-3 form-control",
+          doc: "CSS class for the outer element (a <label/> element)"
+
+        @doc """
+        A component that adds a new item to a list of movable inputs.
+        This component is meant to be used inside `<.movable_inputs_for />` component.
+        """
+        def add_new_input(assigns) do
+          unquote_splicing(maybe_raise_not_implemented)
+
+          ~H"""
+          <label class={@class} style={"cursor:" <> @cursor} title={@tooltip}>
+            <input
+                type="checkbox"
+                name={@sort_param.name <> "[]"}
+                value="new"
+                hidden />
+
+            <%= render_slot(@inner_block) %>
+          </label>
+          """
+        end
+
+        attr :input, Phoenix.HTML.FormField, doc: "the input to be deleted"
+
+        attr :drop_param, Phoenix.HTML.FormField, doc: "drop param for the association"
+
+        attr :animation, :string, default: "animate__animated animate__fadeOutRight animate__faster",
+          doc: "classes to add to the deleted element before removing it"
+
+        attr :animation_duration, :integer, default: 300,
+          doc: "classes to add to the deleted element before removing it"
+
+        attr :tooltip, :string, default: nil,
+          doc: "tooltip for the action"
+
+        attr :class, :string,
+          default: "btn btn-sm btn-outline-danger",
+          doc: "CSS class for the outer element (a <label/> element)"
+
+        attr :cursor, :string,
+          default: "pointer",
+          doc: "CSS cursor style while hovering the button"
+
+        @doc """
+        A component that deletes an item from moveable inputs.
+        This component is meant to be used inside `<.movable_inputs_for />` component.
+        """
+        def delete_input(assigns) do
+          unquote_splicing(maybe_raise_not_implemented)
+
+          input = assigns.input
+          drop_param = Keyword.get(input.options, :inner_inputs__drop_param)
+
+          if is_nil(drop_param) do
+            raise ArgumentError, """
+              Can't use `<delete_input/>` component on input value because you haven't \
+              specified a `drop_param={...}` attribute in the `<movable_inputs_for/>`.
+              """
+          end
+
+          assigns = assign(assigns, drop_param: drop_param)
+
+          ~H"""
+          <label
+              class={@class}
+              style={"cursor:" <> @cursor}
+              title={@tooltip}
+              phx-click={
+                JS.transition(@animation,
+                  to: "[data-movable-item='#{@input.id}']",
+                  time: @animation_duration)
+              }>
+
+            <input
+                type="checkbox"
+                name={@drop_param.name <> "[]"}
+                value={@input.index}
+                hidden />
+
+            <%= render_slot(@inner_block) %>
+          </label>
+          """
+        end
+      end
+
       defoverridable modal: 1,
-                    flash: 1,
-                    flash_group: 1,
-                    simple_form: 1,
-                    input: 1,
-                    button: 1,
-                    list: 1,
-                    icon: 1,
-                    label: 1,
-                    back: 1,
-                    error: 1,
-                    header: 1,
-                    table: 1,
-                    show: 1,
-                    hide: 1,
-                    show_modal: 1,
-                    hide_modal: 1,
-                    translate_error: 1,
-                    translate_errors: 2,
-                    css_assets: 1,
-                    __using__: 1
+                     flash: 1,
+                     flash_group: 1,
+                     simple_form: 1,
+                     input: 1,
+                     button: 1,
+                     list: 1,
+                     icon: 1,
+                     label: 1,
+                     back: 1,
+                     error: 1,
+                     header: 1,
+                     table: 1,
+                     show: 1,
+                     hide: 1,
+                     show_modal: 1,
+                     hide_modal: 1,
+                     translate_error: 1,
+                     translate_errors: 2,
+                     css_assets: 1,
+                     non_movable_inputs_for: 1,
+                     movable_inputs_for: 1,
+                     move_input: 1,
+                     delete_input: 1,
+                     add_new_input: 1,
+                     __using__: 1
     end
   end
 
   # Input widgets
 
-  defp vertical_input(maybe_raise_not_implemented) do
+  defp vertical_input(maybe_raise_not_implemented, is_valid_class) do
     quote do
       def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
         unquote_splicing(maybe_raise_not_implemented)
+        errors = if Phoenix.Component.used_input?(field), do: field.errors, else: []
+
         assigns
         |> assign(field: nil, id: assigns.id || field.id)
-        |> assign(:errors, Enum.map(field.errors, &translate_error(&1)))
+        |> assign(:errors, Enum.map(errors, &translate_error(&1)))
         |> assign_new(:name, fn ->
           if assigns.multiple, do: field.name <> "[]", else: field.name
         end)
@@ -885,14 +1482,15 @@ defmodule Bootstrap5Components.CodeGen do
 
       def input(%{type: "checkbox", value: value} = assigns) do
         unquote_splicing(maybe_raise_not_implemented)
+
         assigns =
           assign_new(assigns, :checked, fn ->
             Phoenix.HTML.Form.normalize_value("checkbox", value)
           end)
 
         ~H"""
-        <div class="mb-3" phx-feedback-for={@name}>
-          <label class="control-label">
+        <div class={@tight_spacing && "" || "mb-3"} phx-feedback-for={@name}>
+          <label :if={@label} class="control-label">
             <input type="hidden" name={@name} value="false" />
             <input
               type="checkbox"
@@ -904,6 +1502,17 @@ defmodule Bootstrap5Components.CodeGen do
             /> <%= @label %>
           </label>
 
+          <input :if={!@label} type="hidden" name={@name} value="false" />
+          <input
+            :if={!@label}
+            type="checkbox"
+            id={@id || @name}
+            name={@name}
+            value="true"
+            checked={@checked}
+            {@rest}
+          />
+
           <.error :for={msg <- @errors}><%= msg %></.error>
         </div>
         """
@@ -911,18 +1520,26 @@ defmodule Bootstrap5Components.CodeGen do
 
       def input(%{type: "select"} = assigns) do
         unquote_splicing(maybe_raise_not_implemented)
+        assigns =
+          assigns
+          |> assign(:is_valid_class, unquote(is_valid_class))
+          |> assign_new(:prompt, fn -> "" end)
+
         ~H"""
-        <div class="mb-3" phx-feedback-for={@name}>
-          <.label for={@id}><%= @label %></.label>
+        <div class={@tight_spacing && "" || "mb-3"} phx-feedback-for={@name}>
+          <.label :if={@label} for={@id}><%= @label %></.label>
 
           <select
             id={@id}
             name={@name}
-            class="form-control"
+            class={[
+              "form-control",
+              (if @errors == [] do @is_valid_class else "is-invalid" end)
+            ]}
             multiple={@multiple}
             {@rest}
           >
-            <option :if={@prompt} value=""><%= @prompt %></option>
+            <option value=""><%= @prompt %></option>
             <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
           </select>
 
@@ -933,15 +1550,17 @@ defmodule Bootstrap5Components.CodeGen do
 
       def input(%{type: "textarea"} = assigns) do
         unquote_splicing(maybe_raise_not_implemented)
+        assigns = assign(assigns, :is_valid_class, unquote(is_valid_class))
+
         ~H"""
-        <div class="mb-3" phx-feedback-for={@name}>
-          <.label for={@id}><%= @label %></.label>
+        <div class={@tight_spacing && "" || "mb-3"} phx-feedback-for={@name}>
+          <.label :if={@label} for={@id}><%= @label %></.label>
           <textarea
             id={@id || @name}
             name={@name}
             class={[
               "form-control",
-              (if @errors == [] do "is-valid" else "is-invalid" end)
+              (if @errors == [] do @is_valid_class else "is-invalid" end)
             ]}
             {@rest}
           ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
@@ -952,6 +1571,7 @@ defmodule Bootstrap5Components.CodeGen do
 
       def input(%{type: "hidden"} = assigns) do
         unquote_splicing(maybe_raise_not_implemented)
+
         ~H"""
         <input type="hidden" name={@name} value={@value} />
         """
@@ -959,9 +1579,11 @@ defmodule Bootstrap5Components.CodeGen do
 
       def input(assigns) do
         unquote_splicing(maybe_raise_not_implemented)
+        assigns = assign(assigns, :is_valid_class, unquote(is_valid_class))
+
         ~H"""
-        <div class="mb-3" phx-feedback-for={@name}>
-          <.label for={@id}><%= @label %></.label>
+        <div class={@tight_spacing && "" || "mb-3"} phx-feedback-for={@name}>
+          <.label :if={@label} for={@id}><%= @label %></.label>
 
           <input
             type={@type}
@@ -970,10 +1592,100 @@ defmodule Bootstrap5Components.CodeGen do
             value={Phoenix.HTML.Form.normalize_value(@type, @value)}
             class={[
               "form-control",
-              (if @errors == [] do "is-valid" else "is-invalid" end)
+              (if @errors == [] do @is_valid_class else "is-invalid" end)
             ]}
             {@rest}
           />
+          <.error :for={msg <- @errors}><%= msg %></.error>
+        </div>
+        """
+      end
+
+      @doc """
+      Renders an input with label and error messages.
+
+      A `%Phoenix.HTML.Form{}` and field name may be passed to the input
+      to build input names and error messages, or all the attributes and
+      errors may be passed explicitly.
+
+      ## Examples
+
+      ```heex
+      <.input field={@form[:email]} type="email" />
+      <.input name="my-input" errors={["oh no!"]} />
+      ```
+      """
+      attr(:id, :any, default: nil)
+      attr(:name, :any)
+      attr(:label, :string, default: nil)
+      attr(:value, :any)
+
+      attr(:path, :string)
+
+      attr(:field, Phoenix.HTML.FormField,
+        doc: "a form field struct retrieved from the form, for example: @form[:email]"
+      )
+
+      attr(:errors, :list, default: [])
+      attr(:checked, :boolean, doc: "the checked flag for checkbox inputs")
+      attr(:prompt, :string, default: nil, doc: "the prompt for select inputs")
+
+      attr(:options, :list, default: [], doc: "the already chosen elements")
+
+      attr(:multiple, :boolean, default: false, doc: "the multiple flag for select inputs")
+
+      attr(:rest, :global,
+        include: ~w(autocomplete cols disabled form max maxlength min minlength
+                                      pattern placeholder readonly required rows size step)
+      )
+
+      def remote_select_input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
+        unquote_splicing(maybe_raise_not_implemented)
+
+        options = Map.get(assigns, :options)
+
+        assigns =
+          assigns
+          |> assign(field: nil, id: assigns[:id] || field.id)
+          |> assign(:errors, Enum.map(field.errors, &translate_error(&1)))
+          |> assign_new(:name, fn ->
+            if assigns.multiple, do: field.name <> "[]", else: field.name
+          end)
+          |> assign_new(:value, fn -> field.value end)
+          |> assign(:is_valid_class, unquote(is_valid_class))
+
+        html_options =
+          for item <- options do
+            [value: item.data.id, key: item.data.__struct__.as_text(item.data)]
+          end
+
+        selected = for item <- options, do: item.data.id
+
+        assigns =
+          assigns
+          |> Map.put(:html_options, html_options)
+          |> Map.put(:selected, selected)
+
+        ~H"""
+        <div class="mb-3" phx-feedback-for={@name}>
+          <.label :if={@label} for={@id}><%= @label %></.label>
+
+          <select
+            id={@id}
+            name={@name}
+            data-bs5-select2-widget="true"
+            data-url={@path}
+            class={[
+              "form-control",
+              (if @errors == [] do @
+              is_valid_class else "is-invalid" end)
+            ]}
+            multiple={@multiple}
+            {@rest}
+          >
+            <%= Phoenix.HTML.Form.options_for_select(@html_options, @selected) %>
+          </select>
+
           <.error :for={msg <- @errors}><%= msg %></.error>
         </div>
         """

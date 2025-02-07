@@ -11,6 +11,7 @@ defmodule Bootstrap5Components.InlineIcons do
   end
 
   require Bootstrap5Components.InlineIcons.Builder
+  import Phoenix.Component
 
   @doc """
   Add an inline icon.

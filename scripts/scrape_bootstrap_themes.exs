@@ -1,12 +1,14 @@
 defmodule ScrapeBootstrapThemes do
-  @use_local_cached_files true
+  @use_local_cached_files false
   # @full_code_path "lib/bootstrap5components.ex"
   @bootswatch_html_url "https://cdnjs.com/libraries/bootswatch"
   @bootswatch_html_path "scripts/cache/cdnjs_bootswatch.html"
-  @css_directory "scripts/cache/original_files"
+  @css_directory "scripts/cache/bootswatch_files"
 
   @darkness_factor 0.80
   @modal_background_opacity 0.95
+
+  require Logger
 
   defp to_int!(string) do
     {int, ""} = Integer.parse(string)
@@ -17,7 +19,7 @@ defmodule ScrapeBootstrapThemes do
     use_local_cached_files = Keyword.get(opts, :cached, @use_local_cached_files)
     # If we're building everything anew, download the necessary files
     # from the respective CDN (which in our case will be http://cdnjs.com)
-    # Wverything lese can be rebuild from the cached files
+    # Everything else can be rebuilt from the cached files
     unless use_local_cached_files do
       html = download_file!(@bootswatch_html_url)
       # Write the file so that we don't have to download it again
@@ -26,6 +28,8 @@ defmodule ScrapeBootstrapThemes do
       # Download the CSS files and save them so that we don't
       # have to download them every time
       download_css_files(urls, @css_directory)
+      # Download JS files
+      download_select2_files()
     end
 
     # From this point on, nothing is downloaded and everything
@@ -35,6 +39,7 @@ defmodule ScrapeBootstrapThemes do
 
     # Add the custom CSS to ther end of the default boostrap/bootswatch files
     customize_themes(data)
+    customize_select2_files()
 
     # # Build a replacement for the part we want to replace
     # replacement = build_ex_fragment_from_scraped_html(data)
@@ -51,6 +56,63 @@ defmodule ScrapeBootstrapThemes do
     # pretty_code = Code.format_string!(transformed_code)
 
     # File.write!(@full_code_path, pretty_code)
+  end
+
+  _ = """
+  <!-- Styles -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/css/select2.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
+  <!-- Or for RTL support -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.rtl.min.css" />
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.5.0/dist/jquery.slim.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.full.min.js"></script>
+  """
+
+  def customize_select2_files() do
+    # Copy the CSS and JS files into the assets directory
+    File.cp_r("scripts/cache/selec2_files/css", "priv/assets/css")
+    File.cp_r("scripts/cache/selec2_files/js", "priv/assets/js")
+
+    # Customize the JS file and copy it again
+    # (the code is simpler if we just overwrite the file we've copied)
+    content = File.read!("scripts/cache/select2_files/js/select2.min.js")
+    content_to_add = File.read!("scripts/select2_customizations.js")
+    new_content = content <> "\n" <> content_to_add
+    File.write!("priv/assets/js/select2.min.js", new_content)
+  end
+
+  def download_select2_files() do
+    urls = [
+      "https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/css/select2.min.css",
+      "https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css",
+      "https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.rtl.min.css",
+      "https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.min.js",
+      "https://cdn.jsdelivr.net/npm/jquery@3.5.0/dist/jquery.min.js",
+    ]
+
+    for url <- urls do
+      contents = download_file!(url)
+      basename = Path.basename(url)
+
+      path =
+        cond do
+          String.ends_with?(basename, ".js") ->
+            Path.join("scripts/cache/select2_files/js", basename)
+
+          String.ends_with?(basename, ".css") ->
+            Path.join("scripts/cache/select2_files/css", basename)
+        end
+
+      File.write!(path, contents)
+
+      Logger.info("Downloaded #{basename}")
+
+      :timer.sleep(150)
+    end
   end
 
   # NOTE: the file contents are returned as a binary and not a charlist
@@ -105,114 +167,71 @@ defmodule ScrapeBootstrapThemes do
     data
   end
 
-  def build_ex_fragment_from_scraped_html(data) do
-    fixed_overrides = """
-      defp fixed_css_overrides() do
-        \"""
-    #{fixed_css_overrides()}
-        \"""
-      end
-    """
-
-    function_definitions =
-      for values <- data do
-        html_code = values[:html_code]
-        theme = values[:theme]
-        css_overrides = build_html_for_css_overrides(values)
-
-        pretty_html_code = String.replace(html_code, " />", "/>")
-        pretty_html_code = String.replace(pretty_html_code, " ", "\n      ")
-        pretty_html_code = String.replace(pretty_html_code, "/>", " />")
-
-        """
-          def css_assets_from_cdn(%{theme: #{inspect(theme)}} = assigns) do
-            ~H\"""
-            #{pretty_html_code}
-        #{css_overrides}
-            \"""
-          end
-
-        """
-      end
-
-    IO.iodata_to_binary(function_definitions ++ [fixed_overrides])
-  end
-
-  def fixed_css_overrides() do
-    """
-        .bi {
-          display: inline-block
-        }
-
-        .live-modal {
-          opacity: 1 !important;
-          position: fixed;
-          z-index: 1;
-          left: 0;
-          top: 0;
-          width: 100%;
-          height: 100%;
-          overflow: auto;
-          background-color: rgba(255,255,255,0.1);
-        }
-
-        .live-modal .modal-title {
-          margin-top: 0;
-        }
-
-        .live-modal .close {
-          position: absolute;
-          right: 1rem;
-          top: 1rem;
-        }
-    """
-  end
-
   def build_css_overrides(values) do
     {bg_r, bg_g, bg_b} = darken_color(values.background_rgb)
 
     """
-        .phx-no-feedback .form-control:focus.is-invalid, .phx-no-feedback .form-control:focus.is-valid {
-          box-shadow:#{values.box_shadow};
-          border-color:#{values.focus_border_color};
-        }
+    .bi { display: inline-block }
 
-        .phx-no-feedback .form-control.is-invalid, .phx-no-feedback .form-control.is-valid {
-          border:#{values.border};
-          background-image:none;
-        }
-
-        .phx-no-feedback .invalid-feedback, .phx.no-feedback .valid-feedback {
-          display:none
-        }
-
-        .bi {
-          display: inline-block
-        }
-
-        .live-modal {
-          opacity: 1 !important;
-          position: fixed;
-          z-index: 1;
-          left: 0;
-          top: 0;
-          width: 100%;
-          height: 100%;
-          overflow: auto;
-          background-color: rgba(#{bg_r},#{bg_g},#{bg_b},#{@modal_background_opacity});
-        }
-
-        .live-modal .modal-title {
-          margin-top: 0;
-        }
-
-        .live-modal .close {
-          position: absolute;
-          right: 1rem;
-          top: 1rem;
-        }
+    .live-modal-background {
+      opacity: 1 !important;
+      position: fixed;
+      z-index: 1;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(#{bg_r},#{bg_g},#{bg_b},#{@modal_background_opacity});
+    }
     """
   end
+
+  # def build_css_overrides(values) do
+  #   {bg_r, bg_g, bg_b} = darken_color(values.background_rgb)
+
+  #   """
+  #       .phx-no-feedback .form-control:focus.is-invalid, .phx-no-feedback .form-control:focus.is-valid {
+  #         box-shadow:#{values.box_shadow};
+  #         border-color:#{values.focus_border_color};
+  #       }
+
+  #       .phx-no-feedback .form-control.is-invalid, .phx-no-feedback .form-control.is-valid {
+  #         border:#{values.border};
+  #         background-image:none;
+  #       }
+
+  #       .phx-no-feedback .invalid-feedback, .phx.no-feedback .valid-feedback {
+  #         display:none
+  #       }
+
+  #       .bi {
+  #         display: inline-block
+  #       }
+
+  #       .live-modal {
+  #         opacity: 1 !important;
+  #         position: fixed;
+  #         z-index: 1;
+  #         left: 0;
+  #         top: 0;
+  #         width: 100%;
+  #         height: 100%;
+  #         overflow: auto;
+  #         background-color: rgba(#{bg_r},#{bg_g},#{bg_b},#{@modal_background_opacity});
+  #       }
+
+  #       .live-modal .modal-title {
+  #         margin-top: 0;
+  #       }
+
+  #       .live-modal .close {
+  #         position: absolute;
+  #         right: 1rem;
+  #         top: 1rem;
+  #       }
+  #   """
+  # end
 
   def build_html_for_css_overrides(values) do
     """
@@ -237,6 +256,10 @@ defmodule ScrapeBootstrapThemes do
     minimized_css
   end
 
+  defp remove_css_source_maps(css) do
+    String.replace(css, "/*# sourceMappingURL=bootstrap.min.css.map */", "")
+  end
+
   def customize_themes(data) do
     for values <- data do
       customize_theme(values)
@@ -246,10 +269,15 @@ defmodule ScrapeBootstrapThemes do
   end
 
   def customize_theme(values) do
-    theme_src = Path.join("scripts/cache/original_files", values.theme <> ".css")
+    theme_src = Path.join(@css_directory, values.theme <> ".css")
     theme_dst = Path.join("priv/assets/css/", values.theme <> ".css")
-    theme_content = File.read!(theme_src)
+    theme_content =
+      theme_src
+      |> File.read!()
+      |> remove_css_source_maps()
+
     custom_minimized_css = build_minimized_css_overrides(values)
+
     customized_theme_content = [theme_content, "\n", custom_minimized_css]
     File.write!(theme_dst, customized_theme_content)
   end
@@ -285,8 +313,9 @@ defmodule ScrapeBootstrapThemes do
   def download_css_files(urls, directory) do
     for {theme, url} <- urls do
       content = download_file!(url)
-      :timer.sleep(0.25)
+      :timer.sleep(150)
       File.write!(Path.join(directory, theme <> ".css"), content)
+      Logger.info("Downloaded #{theme}.css")
     end
 
     :ok

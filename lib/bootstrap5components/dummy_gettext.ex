@@ -6,5 +6,5 @@ defmodule Bootstrap5Components.DummyGettext do
   # the right functions and macros so that we can `use CodeGen`
   # to build a Bootstrap5Components module for documentation
   # purposes
-  use Gettext, otp_app: :bootstrap5components
+  use Gettext.Backend, otp_app: :bootstrap5components
 end
