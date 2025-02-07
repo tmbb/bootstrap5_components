@@ -2,6 +2,11 @@
 
 <!-- %% CHANGELOG_ENTRIES %% -->
 
+### 0.4.0 - 2025-02-07 16:18:25
+
+Fixed publish script. No user-visible changes.
+
+
 ### 0.3.0 - 2025-02-07 16:13:25
 
 This release brings the following changes:
