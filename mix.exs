@@ -15,7 +15,7 @@ defmodule Bootstrap5Components.MixProject do
       package: package(),
       source_url: "https://github.com/tmbb/bootstrap5_components",
       docs: [
-        assets: "docs_assets",
+        assets: %{"docs_assets" => "assets"},
         before_closing_head_tag: &docs_css_assets/1
       ]
     ]
@@ -55,8 +55,9 @@ defmodule Bootstrap5Components.MixProject do
       {:gettext, "~> 0.26"},
       {:code_gen, "~> 0.2"},
       {:ecto, "~> 3.10"},
-      {:ex_doc, "~> 0.31", only: [:dev, :docs]},
-      {:makeup_eex, "~> 0.1.0", only: [:dev, :docs]}
+      {:ex_doc, "~> 0.36", only: [:dev, :docs]},
+      {:makeup_eex, "~> 2.0", only: [:dev, :docs]},
+      {:makeup_html, "~> 0.2", only: [:dev, :docs]}
     ]
   end
 end

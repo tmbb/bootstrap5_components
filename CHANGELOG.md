@@ -1,6 +1,9 @@
 # Changelog
 
-<!-- %% CHANGELOG_ENTRIES %% -->
+<!-- changes - write changes below -->
+
+Update the components so that they are compatible with the
+new Mandarin generators. There are some compatibility breaks.
 
 ### 0.4.0 - 2025-02-07 16:18:25
 
