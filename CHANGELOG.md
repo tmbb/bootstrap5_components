@@ -2,8 +2,12 @@
 
 <!-- changes - write changes below -->
 
-## v0.5.0 - 2025-02-13 11:22:15
+## v0.5.1 - 2025-02-13 12:36:22
 
+
+Fix warning from `<.input type="hidden"/>`.
+
+## v0.5.0 - 2025-02-13 11:22:15
 
 Update the components so that they are compatible with the
 new Mandarin generators. There are some compatibility breaks.
@@ -11,7 +15,6 @@ new Mandarin generators. There are some compatibility breaks.
 ### 0.4.0 - 2025-02-07 16:18:25
 
 Fixed publish script. No user-visible changes.
-
 
 ### 0.3.0 - 2025-02-07 16:13:25
 
