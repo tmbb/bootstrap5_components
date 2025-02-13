@@ -2,6 +2,9 @@
 
 <!-- changes - write changes below -->
 
+## v0.5.0 - 2025-02-13 11:22:15
+
+
 Update the components so that they are compatible with the
 new Mandarin generators. There are some compatibility breaks.
 

@@ -134,4 +134,4 @@ defmodule PrePublish do
   end
 end
 
-Publish.run()
+PrePublish.run()
