@@ -2,8 +2,11 @@
 
 <!-- changes - write changes below -->
 
-## v0.5.1 - 2025-02-13 12:36:22
+## v0.5.2 - 2025-02-14 11:31:04
 
+Fix bug when resources are displayed as links.
+
+## v0.5.1 - 2025-02-13 12:36:22
 
 Fix warning from `<.input type="hidden"/>`.
 

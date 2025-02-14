@@ -68,7 +68,7 @@ defmodule Bootstrap5Components do
   def as_link(resource) do
     assigns = %{resource: resource}
     ~H"""
-    <a href={path_for(@resource)}>{as_html(@resource)}</a>x\
+    <a href={path_for(@resource)}>{as_html(@resource)}</a>
     """
   end
 

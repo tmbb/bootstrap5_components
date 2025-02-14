@@ -10,7 +10,7 @@ by adding `bootstrap5components` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:bootstrap5components, "~> 0.5.1"}
+    {:bootstrap5components, "~> 0.5.2"}
   ]
 end
 ```
